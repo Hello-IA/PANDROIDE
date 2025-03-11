@@ -1,0 +1,4 @@
+\contentsline {section}{\numberline {1}Introduction}{1}{section.1}%
+\contentsline {section}{\numberline {2}Marche aléatoire}{1}{section.2}%
+\contentsline {section}{\numberline {3}Calcule de la loss du critique}{2}{section.3}%
+\contentsline {section}{\numberline {4}Calcule de la loss de l'actor}{3}{section.4}%

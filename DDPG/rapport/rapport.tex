@@ -1,0 +1,126 @@
+\documentclass[12pt]{article}
+
+% Packages commonly used
+\usepackage[utf8]{inputenc} % For encoding
+\usepackage[T1]{fontenc}    % For special characters
+\usepackage{amsmath}        % For mathematical symbols
+\usepackage{graphicx}       % For including images
+\usepackage{geometry}       % To easily customize margins
+\geometry{a4paper, margin=1in} % Example geometry settings
+\usepackage{hyperref}       % For clickable links
+\usepackage{setspace}       % For line spacing
+\usepackage{amssymb}
+% Document metadata
+\title{Rapport DDPG}
+\author{Simon Groc}
+\date{\today} % or set a custom date e.g., \date{1 janvier 2024}
+
+% Begin of the Document
+\begin{document}
+
+\maketitle % Generates the title, author, and date
+
+\tableofcontents % Generates a table of contents
+
+\section{Introduction}
+
+Le bute de se documment et de clarifier le foncionement de ddpg au traver d'un parcoure du code BBRL que nous avont fais avec des explications du coure et la retrencription de celle-ci en code pyhton.
+\section{Marche aléatoire}
+
+Avent de commenser a enténer le modelle il nous faux des donnés sur l'environement pour cela nous alons devoir nous deplaser de manier aléatiore dans celui-ci et recurperet des sample de la forme suivente ("env/terminated", "env/reward" "critic/q\_value", "target-critic/q\_value"). C'est informations sont recupere a chaque step de la marche aléatiore dans l'environement dans notre cas de figure l'on en fais 10000 avec un agent qui utilise un Gaussian pour se deplacer.
+
+\begin{verbatim}
+
+class AddGaussianNoise(Agent):
+    def __init__(self, sigma):
+        super().__init__()
+        self.sigma = sigma
+
+    def forward(self, t, **kwargs):
+        act = self.get(("action", t))
+        dist = Normal(act, self.sigma)
+        action = dist.sample()
+        self.set(("action", t), action)
+
+\end{verbatim}
+
+
+
+\section{Calcule de la loss du critique}
+
+le calcule de la loss du critique et une fonctions qui prent les parametre suivent:
+
+
+\begin{itemize}
+    \item cfg: Le dictioner des parametre du modelle 
+    \item reward: Un tablaux des reconpense en fonctions des transition (taille 2xB)
+    \item must\_bootstrap: Un tablaux de booléen qui indique la fin d'un episode (taille 2xB)
+    \item q\_values: Le calcule de la Q-values pare le critique (taille 2xB)
+    \item target\_q\_values: La Q-values calculer par le target (taille 2xB)
+\end{itemize}
+
+ensuite on dois calculer cette formule $ y_i = r_{i+1} + \gamma \hat{Q}^{\pi\theta}_{\phi} \big(s_{i+1}, \pi(s_{i+1})\big)$
+
+pour pouvoir la comparer a $\hat{Q}_{\phi}^{\pi\theta}(s_i, a_i \mid \phi)$
+
+et caculer la loss $L = \frac{1}{N} \sum_{i} \left( y_i - \hat{Q}_{\phi}^{\pi\theta}(s_i, a_i \mid \phi) \right)^2$
+
+Pour se faire on commense par le cacule de $\hat{Q}_{\phi}^{\pi\theta}(s_i, a_i \mid \phi)$. 
+Il nous faut donc indique a lagent de caculer les nouvelle q\_values pour sa il va utilise les état et les actions du workspace trouver pendands la marche aléatiore puis recuper les q\_values du workspace.
+
+
+
+\begin{verbatim}
+q_agent(rb_workspace, t=0, n_steps=1)
+q_values = rb_workspace["critic/q_values"]
+\end{verbatim}
+
+une fois que on a cette valeur on cacule notre q\_valeus courente il nous faux $\hat{Q}^{\pi\theta}_{\phi} \big(s_{i+1}, \pi(s_{i+1})\big)$ et pour sa on comment pare executer le actore sur $s_{i+1}$ se qui nous donne les action maximale $\pi(s_{i+1})$ une fois optenus on peux enfin metre a jour les valeur du target critique avec $s_{i+1}$ comme indique dans la formule $\hat{Q}^{\pi\theta}_{\phi} \big(s_{i+1}, \pi(s_{i+1})\big)$.
+
+\begin{verbatim}
+with torch.no_grad():
+
+	ag_actor(rb_workspace, t=1, n_steps=1)
+ 
+	target_q_agent(rb_workspace, t=1, n_steps=1, detach_actions=True)
+
+post_q_values = rb_workspace["target-critic/q_values"]
+\end{verbatim}
+
+Dans le bloc ci-dessu aucun gradient nais pris en conte.
+
+Ensuite on appelle la loss foncition :
+
+\begin{verbatim}
+target = reward[:-1].squeeze() + cfg.algorithm.discount_factor * target_q_values[1].squeeze(-1) * must_bootstrap[1].int()  
+
+mse = nn.MSELoss()
+critic_loss = mse(q_values[0].squeeze(-1), target)
+\end{verbatim}
+On commense par calculer $ y_i = r_{i+1} + \gamma \hat{Q}^{\pi\theta}_{\phi} \big(s_{i+1}, \pi(s_{i+1})\big)$ dans cette forume $r_{i+1}$ et reward[:-1], $\gamma$ represent le degrés dentisipations du modelle, et $\hat{Q}^{\pi\theta}_{\phi} \big(s_{i+1}, \pi(s_{i+1})\big)$ c'est simplement q\_valeus de l'etat suivent si on utilise la meieur acitions pour cette état tous sa est multiplier par must\_bootstrap[1].int() un tablaux de booléen qui indique si un episode est finis de cette mainier on ne calcule pas la fin d'un episode et le debus d'un nouvaux comme une trensitions.
+\\
+
+torche.squeeze() : cette methode suprime toute les dimentions de taille 1.
+
+
+
+puis on aplique un desente de gradient classique.
+
+\section{Calcule de la loss de l'actor}
+
+Pour calculer la loss de l'actor il nous faux re caluler les meieur actions puis a nouvaux le critique car on veux recuperer les q\_values que on va passer au en paramete de la loss foncitons.
+
+\begin{verbatim}
+ddpg.t_actor(rb_workspace, t=0, n_steps=1)
+ddpg.t_critic(rb_workspace, t=0, n_steps=1)
+
+q_values = rb_workspace["critic/q_value"]
+\end{verbatim}
+
+puis on envois les q\_values dans la loss fonctions $\mathbb{E}_{a_t \sim \pi_\theta(\cdot)} 
+\big[ \nabla_a \hat{Q}_{\phi}^{\pi_\theta}(s_t, a_t) \, \nabla_\theta \pi_\theta(s_t) \big]$
+
+pour calculer celle la sais trais simple il sufis de faire moin la moyenne car nous cherchons a la maximiser est pythorche ne fais des desente de gradient que pour des probléme de minimisations.
+
+
+\end{document}
