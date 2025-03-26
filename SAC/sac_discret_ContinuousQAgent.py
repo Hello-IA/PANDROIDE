@@ -32,93 +32,25 @@ import bbrl_gymnasium  # noqa: F401
 from torch.distributions import Categorical
 
 
-class SquashedGaussianActor(Agent):
-    def __init__(self, state_dim, hidden_layers, action_dim, min_std=1e-4):
-        """Creates a new Squashed Gaussian actor
-
-        :param state_dim: The dimension of the state space
-        :param hidden_layers: Hidden layer sizes
-        :param action_dim: The dimension of the action space
-        :param min_std: The minimum standard deviation, defaults to 1e-4
-        """
-        super().__init__()
-        self.min_std = min_std
-        backbone_dim = [state_dim] + list(hidden_layers)
-        self.layers = build_mlp(backbone_dim, activation=nn.ReLU())
-        self.backbone = nn.Sequential(*self.layers)
-        self.last_mean_layer = nn.Linear(hidden_layers[-1], action_dim)
-        self.last_std_layer = nn.Linear(hidden_layers[-1], action_dim)
-        self.softplus = nn.Softplus()
         
-        # cache_size avoids numerical infinites or NaNs when
-        # computing log probabilities
-        self.tanh_transform = TanhTransform(cache_size=1)
-
-    def normal_dist(self, obs: torch.Tensor):
-        """Compute normal distribution given observation(s)"""
         
-        backbone_output = self.backbone(obs)
-        mean = self.last_mean_layer(backbone_output)
-        std_out = self.last_std_layer(backbone_output)
-        std = self.softplus(std_out) + self.min_std
-        # Independent ensures that we have a multivariate
-        # Gaussian with a diagonal covariance matrix (given as
-        # a vector `std`)
-        return Independent(Normal(mean, std), 1)
 
-    def forward(self, t, stochastic=True):
-        """Computes the action a_t and its log-probability p(a_t| s_t)
-
-        :param stochastic: True when sampling
-        """
-        normal_dist = self.normal_dist(self.get(("env/env_obs", t)))
-        action_dist = TransformedDistribution(normal_dist, [self.tanh_transform])
-        if stochastic:
-            # Uses the re-parametrization trick
-            action = action_dist.rsample()
-        else:
-            # Directly uses the mode of the distribution
-            action = self.tanh_transform(normal_dist.mode)
-
-        log_prob = action_dist.log_prob(action)
-        # This line allows to deepcopy the actor...
-        self.tanh_transform._cached_x_y = [None, None]
-        self.set(("action", t), action)
-        self.set(("action_logprobs", t), log_prob)
-        
         
 class ContinuousQAgent(Agent):
-    def __init__(self, state_dim: int, hidden_layers: list[int], action_dim: int):
-        """Creates a new critic agent $Q(s, a)$
-
-        :param state_dim: The number of dimensions for the observations
-        :param hidden_layers: The list of hidden layers for the NN
-        :param action_dim: The numer of dimensions for actions
-        """
+    def __init__(self, state_dim, hidden_layers, action_dim):
         super().__init__()
-        self.is_q_function = True
         self.model = build_mlp(
             [state_dim + action_dim] + list(hidden_layers) + [1], activation=nn.ReLU()
         )
 
-    def forward(self, t):
-        obs = self.get(("env/env_obs", t))
-        action = self.get(("action", t))
-        obs_act = torch.cat((obs, action), dim=1)
-        q_value = self.model(obs_act).squeeze(-1)
-        self.set((f"{self.prefix}q_value", t), q_value)
-        
-class DiscreteQAgent(Agent):
-    def __init__(self, state_dim, hidden_layers, action_dim):
-        super().__init__()
-        self.model = build_mlp(
-            [state_dim] + list(hidden_layers) + [action_dim], activation=nn.ReLU()
-        )
-
     def forward(self, t, **kwargs):
         obs = self.get(("env/env_obs", t))
-        q_values = self.model(obs)
-        self.set((f"{self.prefix}q_value", t), q_values)
+        action = self.get(("action", t))
+        print("obs", obs.size())
+        print("action", action.unsqueeze(-1).size())
+        obs_act = torch.cat((obs, action.unsqueeze(-1)), dim=1)
+        q_value = self.model(obs_act).squeeze(-1)
+        self.set((f"{self.prefix}q_value", t), q_value)
         
         
 class DiscretePolicy(Agent):
@@ -182,13 +114,12 @@ class DiscretePolicy(Agent):
         # Calcul des log-probabilités (log P(a|s))
         log_prob = action_dist.log_prob(action)
         
-        # Récupérer les probabilités des actions réalisées
-        selected_action_probs = action_probs[torch.arange(action_probs.size(0)), action]
+
 
         # Sauvegarder les actions, les log-probabilités et les probabilités dans le workspace
         self.set(("action", t), action)
         self.set(("action_logprobs", t), log_prob)
-        self.set(("action_probs", t), selected_action_probs)
+        self.set(("action_probs", t), action_probs)
 # Create the SAC algorithm environment
 class SACAlgo(EpochBasedAlgo):
     def __init__(self, cfg):
@@ -202,7 +133,7 @@ class SACAlgo(EpochBasedAlgo):
         )
 
         # Builds the critics
-        self.critic_1 = DiscreteQAgent(
+        self.critic_1 = ContinuousQAgent(
             obs_size,
             cfg.algorithm.architecture.critic_hidden_size,
             act_size,
@@ -211,7 +142,7 @@ class SACAlgo(EpochBasedAlgo):
             "target-critic-1/"
         )
 
-        self.critic_2 = DiscreteQAgent(
+        self.critic_2 = ContinuousQAgent(
             obs_size,
             cfg.algorithm.architecture.critic_hidden_size,
             act_size,
@@ -276,19 +207,25 @@ def compute_critic_loss(
         t_target_q_agents(rb_workspace, t=1, n_steps=1)
         
         q_values_next_1, q_values_next_2 =rb_workspace["target-critic-1/q_value", "target-critic-2/q_value"]
+        q_values_next = torch.minimum(q_values_next_1[1], q_values_next_2[1]).T
+ 
         
-        q_values_next = torch.minimum(q_values_next_1[1], q_values_next_2[1])
-
+        action_probs = action_probs  # Now [batch_size, num_actions] -> [256, 2]
+        #print("action_probs", action_probs.sum(dim = 1))
         
-        action_probs = action_probs.T  # Now [batch_size, num_actions] -> [256, 2]
-        action_logprobs = action_logprobs.T
-        
-        esperance_interne = (action_probs * (
+        action_logprobs = action_logprobs
+        esperance_interne = (action_probs[0].T * (
                 q_values_next - ent_coef * action_logprobs
-        )).sum(dim=1)
+        )).sum(dim=0)
+
         target = reward[1] + cfg.algorithm.discount_factor*esperance_interne*must_bootstrap[1].int()
         
-
+    """
+    for key in rb_workspace.keys():
+        print(f"{key}")
+        print("shape", rb_workspace[key].shape)
+    """
+    
     q_value_1, q_value_2  = rb_workspace["critic-1/q_value", "critic-2/q_value"]
 
 
@@ -305,6 +242,7 @@ def compute_critic_loss(
 
     mean_critic_loss_1 = critic_loss_1.mean()  # Moyenne sur le batch
     mean_critic_loss_2 = critic_loss_2.mean()
+    
 
     return mean_critic_loss_1, mean_critic_loss_2
 
@@ -335,7 +273,7 @@ def compute_actor_loss(
     action_probs = action_probs.T
     action_logprobs = action_logprobs.T
 
-    current_q_values = torch.minimum(q_value_1, q_value_2).T
+    current_q_values = torch.minimum(q_value_1, q_value_2)
 
     inside_term = ent_coef * action_logprobs - current_q_values
     actor_loss = (action_probs * inside_term).sum(dim=1).mean()
