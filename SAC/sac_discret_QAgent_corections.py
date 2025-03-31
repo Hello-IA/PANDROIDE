@@ -24,39 +24,30 @@ from bbrl_utils.notebook import setup_tensorboard
 from omegaconf import OmegaConf
 from torch.distributions import (
     Normal,
-    Independent,
     TransformedDistribution,
-    TanhTransform,
 )
 import bbrl_gymnasium  # noqa: F401
 from torch.distributions import Categorical
 
 
-        
-        
 
         
-class ContinuousQAgent(Agent):
+
+class DiscreteQAgent(Agent):
     def __init__(self, state_dim, hidden_layers, action_dim):
         super().__init__()
         self.model = build_mlp(
-            [state_dim + action_dim] + list(hidden_layers) + [1], activation=nn.ReLU()
+            [state_dim] + list(hidden_layers) + [action_dim], activation=nn.ReLU()
         )
 
     def forward(self, t, **kwargs):
         obs = self.get(("env/env_obs", t))
-        action = self.get(("action", t))
-        print("obs", obs.size())
-        obs_act = torch.cat((obs, action.unsqueeze(-1)), dim=1)
-        print("obs_act", obs_act.size())
-        q_value = self.model(obs_act)
-        print("q_value", q_value.size())
-        q_value = q_value.squeeze(-1)
-        self.set((f"{self.prefix}q_value", t), q_value)
+        q_values = self.model(obs)
+        self.set((f"{self.prefix}q_value", t), q_values)
         
         
 class DiscretePolicy(Agent):
-    def __init__(self, state_dim, hidden_layers, action_dim, min_std=1e-4):
+    def __init__(self, state_dim, hidden_layers, action_dim):
         """Creates a new Squashed Gaussian actor
 
         :param state_dim: The dimension of the state space
@@ -65,13 +56,16 @@ class DiscretePolicy(Agent):
         :param min_std: The minimum standard deviation, defaults to 1e-4
         """
         super().__init__()
-        self.min_std = min_std
         backbone_dim = [state_dim] + list(hidden_layers)
         self.layers = build_mlp(backbone_dim, activation=nn.ReLU())
-        self.backbone = nn.Sequential(*self.layers)
-        self.last_mean_layer = nn.Linear(hidden_layers[-1], action_dim)
-        self.last_std_layer = nn.Linear(hidden_layers[-1], action_dim)
-
+        self.model = nn.Sequential(*self.layers)
+        self.last_layer = nn.Linear(hidden_layers[-1], action_dim)
+        
+    def get_distribution(self, obs):
+        scores = self.last_layer(self.model(obs))
+        probs = torch.softmax(scores, dim=-1)
+        
+        return torch.distributions.Categorical(probs), scores, probs
 
     def forward(self, t, stochastic = False):
         """Computes the action a_t from a categorical distribution
@@ -81,31 +75,25 @@ class DiscretePolicy(Agent):
         # Récupérer les observations de l'environnement
         obs = self.get(("env/env_obs", t))
         
-        # Passer les observations dans le réseau
-        logits = self.last_std_layer(self.backbone(obs))
-        
         # Créer une distribution catégorique basée sur les logits
-        action_dist = Categorical(logits=logits)
-        
+        action_dist, _, action_probs  = self.get_distribution(obs)
+         
         # Récupérer la probabilité associée à chaque action
-        action_probs = action_dist.probs
 
         if stochastic:
             # Échantillonnage d'une action de manière stochastique
             action = action_dist.sample()
         else:
             # Sélection de l'action avec la probabilité maximale
-            action = torch.argmax(logits, dim=1)
+            action = action_probs.argmax(1)
 
         # Calcul des log-probabilités (log P(a|s))
         log_prob = action_dist.log_prob(action)
         
-
-
-        # Sauvegarder les actions, les log-probabilités et les probabilités dans le workspace
         self.set(("action", t), action)
         self.set(("action_logprobs", t), log_prob)
         self.set(("action_probs", t), action_probs)
+        
 # Create the SAC algorithm environment
 class SACAlgo(EpochBasedAlgo):
     def __init__(self, cfg):
@@ -119,7 +107,7 @@ class SACAlgo(EpochBasedAlgo):
         )
 
         # Builds the critics
-        self.critic_1 = ContinuousQAgent(
+        self.critic_1 = DiscreteQAgent(
             obs_size,
             cfg.algorithm.architecture.critic_hidden_size,
             act_size,
@@ -128,7 +116,7 @@ class SACAlgo(EpochBasedAlgo):
             "target-critic-1/"
         )
 
-        self.critic_2 = ContinuousQAgent(
+        self.critic_2 = DiscreteQAgent(
             obs_size,
             cfg.algorithm.architecture.critic_hidden_size,
             act_size,
@@ -273,12 +261,61 @@ def compute_actor_loss(
 
 import numpy as np
 
+import os
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
+
+import matplotlib.pyplot as plt
+
+def plot_learning_curve(logger_critic_loss_1, logger_critic_loss_2, logger_actor_loss, logger_reward, logger_nb_steps, save_path=None):
+    """
+    Plot learning curves from the logger data
+    
+    Args:
+        logger: The logger object from the algorithm
+        save_path: Optional path to save the figure
+    """
+
+    # Create a figure with multiple subplots
+    
+    steps = logger_nb_steps
+    values = logger_reward
+    plt.plot(steps, values)
+    plt.title('Average Reward')
+    plt.xlabel('Steps')
+    plt.ylabel('Reward')
+    plt.show()
+    
+
+    steps = logger_nb_steps
+    values = logger_actor_loss
+    plt.plot(steps, values)
+    plt.title('Actor Loss')
+    plt.xlabel('Steps')
+    plt.ylabel('Loss')
+    plt.show()
+
+    
+
+    steps1 = logger_nb_steps
+    values1 = logger_critic_loss_1
+    steps2 = logger_nb_steps
+    values2 = logger_critic_loss_2
+    plt.plot(steps1, values1, label='Critic 1')
+    plt.plot(steps2, values2, label='Critic 2')
+    plt.title('Critic Losses')
+    plt.xlabel('Steps')
+    plt.ylabel('Loss')
+    plt.legend()
+    plt.show()
+    
+
+
 
 def run_sac(sac: SACAlgo):
     cfg = sac.cfg
     logger = sac.logger
 
-
+    logger_critic_loss_1, logger_critic_loss_2, logger_actor_loss, logger_reward, logger_nb_steps = [], [], [], [], []
     # init_entropy_coef is the initial value of the entropy coef alpha.
     ent_coef = cfg.algorithm.init_entropy_coef
     tau = cfg.algorithm.tau_target
@@ -310,6 +347,12 @@ def run_sac(sac: SACAlgo):
         critic_optimizer.zero_grad()
         critic_loss_1, critic_loss_2 = compute_critic_loss(cfg, reward, ~terminated, t_actor, t_q_agents, t_target_q_agents, rb_workspace, ent_coef)
         
+        logger_critic_loss_1.append(critic_loss_1)
+        logger_critic_loss_2.append(critic_loss_2)
+        logger_reward.append(logger_reward)
+        
+        logger_nb_steps.append(sac.nb_steps)
+        
         logger.add_log("critic_loss_1", critic_loss_1, sac.nb_steps)
         logger.add_log("critic_loss_2", critic_loss_2, sac.nb_steps)
         critic_loss = critic_loss_1 + critic_loss_2
@@ -326,7 +369,10 @@ def run_sac(sac: SACAlgo):
 
         actor_optimizer.zero_grad()
         actor_loss = compute_actor_loss(ent_coef, t_actor, t_q_agents, rb_workspace)
-        sac.logger.add_log("actor_loss", actor_loss, sac.nb_steps)
+        
+        logger_actor_loss.append(actor_loss)
+        
+        logger.add_log("actor_loss", actor_loss, sac.nb_steps)
 
         
         actor_loss.backward()
@@ -357,7 +403,10 @@ def run_sac(sac: SACAlgo):
         soft_update_params(sac.critic_2, sac.target_critic_2, tau)
 
         sac.evaluate()
+    plot_learning_curve(logger_critic_loss_1, logger_critic_loss_2, logger_actor_loss, logger_reward, logger_nb_steps, "sac_learning_curve.png")
         
+        
+
 params = {
     "save_best": True,
     "base_dir": "${gym_env.env_name}/sac-S${algorithm.seed}_${current_time:}",
@@ -377,7 +426,7 @@ params = {
         "init_entropy_coef": 2e-7,
         "tau_target": 0.05,
         "architecture": {
-            "actor_hidden_size": [64, 64],
+            "actor_hidden_size": [32, 32],
             "critic_hidden_size": [256, 256],
         },
     },
@@ -388,7 +437,7 @@ params = {
     },
     "critic_optimizer": {
         "classname": "torch.optim.Adam",
-        "lr": 3e-4,
+        "lr": 3e-3,
     },
     "entropy_coef_optimizer": {
         "classname": "torch.optim.Adam",
@@ -396,8 +445,12 @@ params = {
     },
 }
 
+
+
 agents = SACAlgo(OmegaConf.create(params))
 run_sac(agents)
+
+
 
 # Visualize the best policy
 agents.visualize_best()

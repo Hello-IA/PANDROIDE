@@ -51,7 +51,6 @@ class DiscreteQAgent(Agent):
 class DiscretePolicy(Agent):
     def __init__(self, state_dim, hidden_layers, action_dim, min_std=1e-4):
         """Creates a new Squashed Gaussian actor
-
         :param state_dim: The dimension of the state space
         :param hidden_layers: Hidden layer sizes
         :param action_dim: The dimension of the action space
@@ -64,23 +63,8 @@ class DiscretePolicy(Agent):
         self.backbone = nn.Sequential(*self.layers)
         self.last_mean_layer = nn.Linear(hidden_layers[-1], action_dim)
         self.last_std_layer = nn.Linear(hidden_layers[-1], action_dim)
-        self.softplus = nn.Softplus()
         
-        # cache_size avoids numerical infinites or NaNs when
-        # computing log probabilities
-        self.tanh_transform = TanhTransform(cache_size=1)
 
-    def normal_dist(self, obs: torch.Tensor):
-        """Compute normal distribution given observation(s)"""
-        
-        backbone_output = self.backbone(obs)
-        mean = self.last_mean_layer(backbone_output)
-        std_out = self.last_std_layer(backbone_output)
-        std = self.softplus(std_out) + self.min_std
-        # Independent ensures that we have a multivariate
-        # Gaussian with a diagonal covariance matrix (given as
-        # a vector `std`)
-        return Independent(Normal(mean, std), 1)
 
     def forward(self, t, stochastic = False):
         """Computes the action a_t from a categorical distribution
@@ -89,10 +73,9 @@ class DiscretePolicy(Agent):
         """
         # Récupérer les observations de l'environnement
         obs = self.get(("env/env_obs", t))
-        
         # Passer les observations dans le réseau
         logits = self.last_std_layer(self.backbone(obs))
-        
+        print(logits)
         # Créer une distribution catégorique basée sur les logits
         action_dist = Categorical(logits=logits)
         
@@ -108,8 +91,7 @@ class DiscretePolicy(Agent):
 
         # Calcul des log-probabilités (log P(a|s))
         log_prob = action_dist.log_prob(action)
-        
-
+        jsnidn
 
         # Sauvegarder les actions, les log-probabilités et les probabilités dans le workspace
         self.set(("action", t), action)
@@ -386,7 +368,7 @@ params = {
         "init_entropy_coef": 2e-7,
         "tau_target": 0.05,
         "architecture": {
-            "actor_hidden_size": [64, 64],
+            "actor_hidden_size": [32, 32],
             "critic_hidden_size": [256, 256],
         },
     },
@@ -397,7 +379,7 @@ params = {
     },
     "critic_optimizer": {
         "classname": "torch.optim.Adam",
-        "lr": 3e-4,
+        "lr": 3e-3,
     },
     "entropy_coef_optimizer": {
         "classname": "torch.optim.Adam",

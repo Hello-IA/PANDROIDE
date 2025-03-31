@@ -107,7 +107,9 @@ class ContinuousQAgent(Agent):
         print("obs", obs.size())
         print("action", action.size())
         obs_act = torch.cat((obs, action), dim=1)
+        print("obs_act", obs_act.size())
         q_value = self.model(obs_act).squeeze(-1)
+        print("obs_act", q_value.size())
         self.set((f"{self.prefix}q_value", t), q_value)
         
 # Create the SAC algorithm environment
