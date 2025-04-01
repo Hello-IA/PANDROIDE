@@ -91,12 +91,9 @@ class DiscretePolicy(Agent):
 
         # Calcul des log-probabilités (log P(a|s))
         log_prob = action_dist.log_prob(action)
-        jsnidn
 
         # Sauvegarder les actions, les log-probabilités et les probabilités dans le workspace
-        self.set(("action", t), action)
-        self.set(("action_logprobs", t), log_prob)
-        self.set(("action_probs", t), action_probs)
+
 # Create the SAC algorithm environment
 class SACAlgo(EpochBasedAlgo):
     def __init__(self, cfg):

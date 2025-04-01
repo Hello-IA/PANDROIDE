@@ -85,11 +85,15 @@ class DiscretePolicy(Agent):
             action = action_dist.sample()
         else:
             # Sélection de l'action avec la probabilité maximale
+            #print("action_probs", action_probs.size())
             action = action_probs.argmax(1)
+            #print("action", action.size())
 
         # Calcul des log-probabilités (log P(a|s))
-        log_prob = action_dist.log_prob(action)
-        
+        log_prob = torch.log(action_probs)
+        if not(stochastic):
+            pass
+            #print("log_prob", log_prob.size())
         self.set(("action", t), action)
         self.set(("action_logprobs", t), log_prob)
         self.set(("action_probs", t), action_probs)
@@ -181,17 +185,20 @@ def compute_critic_loss(
         t_target_q_agents(rb_workspace, t=1, n_steps=1)
         
         q_values_next_1, q_values_next_2 =rb_workspace["target-critic-1/q_value", "target-critic-2/q_value"]
-        q_values_next = torch.minimum(q_values_next_1[1], q_values_next_2[1]).T
- 
+        q_values_next = torch.minimum(q_values_next_1[1], q_values_next_2[1])
+        #print("q_values_next", q_values_next.size())
+        
         
         action_probs = action_probs  # Now [batch_size, num_actions] -> [256, 2]
-        #print("action_probs", action_probs.sum(dim = 1))
-        
+        #print("action_probs", action_probs.size())
+        #print("action_logprobs", action_logprobs.size())
         action_logprobs = action_logprobs
-        esperance_interne = (action_probs[0].T * (
-                q_values_next - ent_coef * action_logprobs
-        )).sum(dim=0)
-
+        esperance_interne = (action_probs[1] * (
+                q_values_next - ent_coef * action_logprobs[1]
+        )).mean(dim=1)
+        #print("reward", reward.size())
+        #print("must_bootstrap", must_bootstrap.size())
+        #print("esperance_interne", esperance_interne.size())
         target = reward[1] + cfg.algorithm.discount_factor*esperance_interne*must_bootstrap[1].int()
         
     """
@@ -201,8 +208,8 @@ def compute_critic_loss(
     """
     
     q_value_1, q_value_2  = rb_workspace["critic-1/q_value", "critic-2/q_value"]
-
-
+    #print("q_value_1", q_value_1.size())
+    #print("q_value_2", q_value_1.size())
     q_value_1 = q_value_1.squeeze(0)
     q_value_2 = q_value_2.squeeze(0)
 
@@ -237,19 +244,21 @@ def compute_actor_loss(
 
     t_actor(rb_workspace, t=0, n_steps=1)
     action_probs, action_logprobs = rb_workspace["action_probs", "action_logprobs"]
-    
+    #print("action_probs", action_probs.size())
+    #print("action_logprobs", action_logprobs.size())
     t_q_agents(rb_workspace, t=0, n_steps=1)
     q_value_1, q_value_2 = rb_workspace["critic-1/q_value", "critic-2/q_value"]
+    
+    q_value_1 = q_value_1[0]
+    q_value_2 = q_value_2[0]
 
-    q_value_1 = q_value_1.squeeze(0)
-    q_value_2 = q_value_2.squeeze(0)
-
-    action_probs = action_probs.T
-    action_logprobs = action_logprobs.T
+    action_probs = action_probs
+    action_logprobs = action_logprobs[0]
 
     current_q_values = torch.minimum(q_value_1, q_value_2)
-
+    #print("current_q_values", current_q_values.size())
     inside_term = ent_coef * action_logprobs - current_q_values
+    #print("inside_term", inside_term.size())
     actor_loss = (action_probs * inside_term).sum(dim=1).mean()
     # Compute the actor loss
 
@@ -266,7 +275,7 @@ os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
 
 import matplotlib.pyplot as plt
 
-def plot_learning_curve(logger_critic_loss_1, logger_critic_loss_2, logger_actor_loss, logger_reward, logger_nb_steps, save_path=None):
+def plot_learning_curve(logger_critic_loss_1, logger_actor_loss, logger_reward, logger_nb_steps, save_path=None):
     """
     Plot learning curves from the logger data
     
@@ -276,14 +285,6 @@ def plot_learning_curve(logger_critic_loss_1, logger_critic_loss_2, logger_actor
     """
 
     # Create a figure with multiple subplots
-    
-    steps = logger_nb_steps
-    values = logger_reward
-    plt.plot(steps, values)
-    plt.title('Average Reward')
-    plt.xlabel('Steps')
-    plt.ylabel('Reward')
-    plt.show()
     
 
     steps = logger_nb_steps
@@ -298,10 +299,8 @@ def plot_learning_curve(logger_critic_loss_1, logger_critic_loss_2, logger_actor
 
     steps1 = logger_nb_steps
     values1 = logger_critic_loss_1
-    steps2 = logger_nb_steps
-    values2 = logger_critic_loss_2
+
     plt.plot(steps1, values1, label='Critic 1')
-    plt.plot(steps2, values2, label='Critic 2')
     plt.title('Critic Losses')
     plt.xlabel('Steps')
     plt.ylabel('Loss')
@@ -315,7 +314,7 @@ def run_sac(sac: SACAlgo):
     cfg = sac.cfg
     logger = sac.logger
 
-    logger_critic_loss_1, logger_critic_loss_2, logger_actor_loss, logger_reward, logger_nb_steps = [], [], [], [], []
+    logger_critic_loss, logger_actor_loss, logger_reward, logger_nb_steps = [], [], [], []
     # init_entropy_coef is the initial value of the entropy coef alpha.
     ent_coef = cfg.algorithm.init_entropy_coef
     tau = cfg.algorithm.tau_target
@@ -346,16 +345,14 @@ def run_sac(sac: SACAlgo):
         
         critic_optimizer.zero_grad()
         critic_loss_1, critic_loss_2 = compute_critic_loss(cfg, reward, ~terminated, t_actor, t_q_agents, t_target_q_agents, rb_workspace, ent_coef)
-        
-        logger_critic_loss_1.append(critic_loss_1)
-        logger_critic_loss_2.append(critic_loss_2)
-        logger_reward.append(logger_reward)
+
         
         logger_nb_steps.append(sac.nb_steps)
         
         logger.add_log("critic_loss_1", critic_loss_1, sac.nb_steps)
         logger.add_log("critic_loss_2", critic_loss_2, sac.nb_steps)
         critic_loss = critic_loss_1 + critic_loss_2
+        logger_critic_loss.append(critic_loss.detach().numpy())
         critic_loss.backward()
         torch.nn.utils.clip_grad_norm_(
             sac.critic_1.parameters(), cfg.algorithm.max_grad_norm
@@ -370,7 +367,7 @@ def run_sac(sac: SACAlgo):
         actor_optimizer.zero_grad()
         actor_loss = compute_actor_loss(ent_coef, t_actor, t_q_agents, rb_workspace)
         
-        logger_actor_loss.append(actor_loss)
+        logger_actor_loss.append(actor_loss.detach().numpy())
         
         logger.add_log("actor_loss", actor_loss, sac.nb_steps)
 
@@ -403,7 +400,7 @@ def run_sac(sac: SACAlgo):
         soft_update_params(sac.critic_2, sac.target_critic_2, tau)
 
         sac.evaluate()
-    plot_learning_curve(logger_critic_loss_1, logger_critic_loss_2, logger_actor_loss, logger_reward, logger_nb_steps, "sac_learning_curve.png")
+    plot_learning_curve(logger_critic_loss, logger_actor_loss, logger_reward, logger_nb_steps, "sac_learning_curve.png")
         
         
 
@@ -426,7 +423,7 @@ params = {
         "init_entropy_coef": 2e-7,
         "tau_target": 0.05,
         "architecture": {
-            "actor_hidden_size": [32, 32],
+            "actor_hidden_size": [20, 20],
             "critic_hidden_size": [256, 256],
         },
     },
