@@ -72,28 +72,17 @@ class DiscretePolicy(Agent):
 
         :param stochastic: True to use sampling, False to use the max probability action
         """
-        # Récupérer les observations de l'environnement
         obs = self.get(("env/env_obs", t))
         
-        # Créer une distribution catégorique basée sur les logits
         action_dist, _, action_probs  = self.get_distribution(obs)
-         
-        # Récupérer la probabilité associée à chaque action
 
         if stochastic:
-            # Échantillonnage d'une action de manière stochastique
             action = action_dist.sample()
         else:
-            # Sélection de l'action avec la probabilité maximale
-            #print("action_probs", action_probs.size())
             action = action_probs.argmax(1)
-            #print("action", action.size())
 
-        # Calcul des log-probabilités (log P(a|s))
         log_prob = torch.log(action_probs)
-        if not(stochastic):
-            pass
-            #print("log_prob", log_prob.size())
+
         self.set(("action", t), action)
         self.set(("action_logprobs", t), log_prob)
         self.set(("action_probs", t), action_probs)
@@ -186,42 +175,27 @@ def compute_critic_loss(
         
         q_values_next_1, q_values_next_2 =rb_workspace["target-critic-1/q_value", "target-critic-2/q_value"]
         q_values_next = torch.minimum(q_values_next_1[1], q_values_next_2[1])
-        #print("q_values_next", q_values_next.size())
+
         
-        
-        action_probs = action_probs  # Now [batch_size, num_actions] -> [256, 2]
-        #print("action_probs", action_probs.size())
-        #print("action_logprobs", action_logprobs.size())
-        action_logprobs = action_logprobs
         esperance_interne = (action_probs[1] * (
                 q_values_next - ent_coef * action_logprobs[1]
         )).mean(dim=1)
-        #print("reward", reward.size())
-        #print("must_bootstrap", must_bootstrap.size())
-        #print("esperance_interne", esperance_interne.size())
         target = reward[1] + cfg.algorithm.discount_factor*esperance_interne*must_bootstrap[1].int()
         
-    """
-    for key in rb_workspace.keys():
-        print(f"{key}")
-        print("shape", rb_workspace[key].shape)
-    """
     
     q_value_1, q_value_2  = rb_workspace["critic-1/q_value", "critic-2/q_value"]
-    #print("q_value_1", q_value_1.size())
-    #print("q_value_2", q_value_1.size())
-    q_value_1 = q_value_1.squeeze(0)
-    q_value_2 = q_value_2.squeeze(0)
+
+    q_value_1 = q_value_1[0]
+    q_value_2 = q_value_2[0]
 
     actions = actions[0, :]
-
 
     soft_q_values = torch.gather(q_value_1, dim=1, index=actions.unsqueeze(-1)).squeeze(-1)
     soft_q_values2 = torch.gather(q_value_2, dim=1, index=actions.unsqueeze(-1)).squeeze(-1)
     critic_loss_1 = torch.nn.MSELoss(reduction="none")(soft_q_values, target)
     critic_loss_2 = torch.nn.MSELoss(reduction="none")(soft_q_values2, target)
 
-    mean_critic_loss_1 = critic_loss_1.mean()  # Moyenne sur le batch
+    mean_critic_loss_1 = critic_loss_1.mean()
     mean_critic_loss_2 = critic_loss_2.mean()
     
 
@@ -240,30 +214,23 @@ def compute_actor_loss(
     :param rb_workspace: The replay buffer (2 time steps, $t$ and $t+1$)
     """
 
-    # Recompute the action with the current actor (at $a_t$)
 
     t_actor(rb_workspace, t=0, n_steps=1)
     action_probs, action_logprobs = rb_workspace["action_probs", "action_logprobs"]
-    #print("action_probs", action_probs.size())
-    #print("action_logprobs", action_logprobs.size())
+    
     t_q_agents(rb_workspace, t=0, n_steps=1)
     q_value_1, q_value_2 = rb_workspace["critic-1/q_value", "critic-2/q_value"]
     
     q_value_1 = q_value_1[0]
     q_value_2 = q_value_2[0]
 
-    action_probs = action_probs
     action_logprobs = action_logprobs[0]
 
     current_q_values = torch.minimum(q_value_1, q_value_2)
-    #print("current_q_values", current_q_values.size())
+
     inside_term = ent_coef * action_logprobs - current_q_values
-    #print("inside_term", inside_term.size())
+
     actor_loss = (action_probs * inside_term).sum(dim=1).mean()
-    # Compute the actor loss
-
-
-
 
     return actor_loss
 
