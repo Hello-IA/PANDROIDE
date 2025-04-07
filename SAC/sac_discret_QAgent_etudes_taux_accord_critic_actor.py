@@ -136,7 +136,7 @@ class SACAlgo(EpochBasedAlgo):
         Returns True if the current policy is the best so far
         """
         #print("IN EVALUATE")
-        
+        global all_taux_accord, steps_evaluation
 
         if force or (
             (self.nb_steps - self.last_eval_step) > self.cfg.algorithm.eval_interval
@@ -430,6 +430,8 @@ import copy
 
 def n_run_sac(sac: SACAlgo, n):
     #lancement de la fonction run n fois
+    global all_taux_accord, steps_evaluation
+    
     for i in range (n):
         all_taux_accord = []
         steps_evaluation = []
