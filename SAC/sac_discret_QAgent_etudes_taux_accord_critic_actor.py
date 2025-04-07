@@ -326,11 +326,13 @@ def plot_learning_curve(logger_critic_loss_1, logger_actor_loss, logger_reward, 
     plt.show()
     
 
+
 all_taux_accord = [] #recupere le taux d'accord pour chaque evaluation de la politique
 steps_evaluation = [] #recupere le taux d'accord pour chaque evaluation de la politique
 
-
 def run_sac(sac: SACAlgo):
+
+
     cfg = sac.cfg
     logger = sac.logger
 
@@ -422,6 +424,20 @@ def run_sac(sac: SACAlgo):
         sac.evaluate()
     plot_learning_curve(logger_critic_loss, logger_actor_loss, logger_reward, logger_nb_steps, "sac_learning_curve.png")
         
+all_taux_accord_n = []
+steps_evaluation_n = []
+import copy
+
+def n_run_sac(sac: SACAlgo, n):
+    #lancement de la fonction run n fois
+    for i in range (n):
+        all_taux_accord = []
+        steps_evaluation = []
+        run_sac(sac)
+        all_taux_accord_n.append(copy.deepcopy(all_taux_accord))
+        steps_evaluation_n.append(copy.deepcopy(steps_evaluation))
+    
+    
         
 
 params = {
@@ -465,7 +481,55 @@ params = {
 
 
 agents = SACAlgo(OmegaConf.create(params))
-run_sac(agents)
+#print("pour pouvoir lancer tensorboard depuis terminal:")
+#print("params=",params["base_dir"])
+#Afin de visualiser les logs sur Tensorboard:
+#log_dir = "./runs/DSac_cartpole"
+#agents.logger = setup_tensorboard(log_dir)
+#run_sac(agents)
+NB_RUN = 2
+n_run_sac(agents, NB_RUN)
+
+np_taux = np.array(all_taux_accord_n) 
+np_steps = np.array(steps_evaluation_n)
+
+#Le premier run genere 241 evaluations et les autres 250 évaluation
+#On a tronqué aux 241 premiere évaluation de chaque run
+for i in range(NB_RUN):
+    np_taux[i] = np_taux[i][:241]
+    np_steps[i] = np_steps[i][:241]
+
+# On remet bien en matrice numpy
+np_taux = np.vstack(np_taux)
+np_steps = np.vstack(np_steps)
+
+
+def plot_taux_accord(taux, steps):
+
+    taux_max = taux.max(axis=0)
+    taux_min = taux.min(axis=0)
+
+    mean = taux.mean(axis=0)
+    std = np_taux.std(axis=0)
+
+    plt.figure(figsize=(10, 6))
+    plt.plot(steps[0], mean, label="Moyenne", linewidth=2)
+    plt.plot(steps[0], taux_max, label="Max", linewidth=0.8)
+    plt.plot(steps[0], taux_min, label="Min", linewidth=0.8)
+    plt.fill_between(steps[0], mean - std, mean + std, alpha=0.3, label="Écart-type")
+    plt.xlabel("Steps")
+    plt.ylabel("Taux")
+    plt.title("Évolution du taux d'accord entre l'actor et le critic pour chaque évaluation - 10 runs")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+
+
+
+plot_taux_accord(np_taux, np_steps)
+
 
 
 
