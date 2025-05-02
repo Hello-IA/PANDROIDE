@@ -66,7 +66,6 @@ class DiscretePolicy(Agent):
         
     def get_distribution(self, obs):
         scores = self.last_layer(self.model(obs))
-        scores = scores - scores.max(dim=-1, keepdim=True)[0]
         probs = torch.softmax(scores, dim=-1)
         
         return torch.distributions.Categorical(probs), scores, probs
@@ -321,7 +320,6 @@ def plot_learning_curve(logger_critic_loss_1, logger_actor_loss, logger_reward, 
     plt.show()
     
 
-<<<<<<< HEAD
     plt.plot(range(len(logger_reward)), logger_reward, label='Reward')
     plt.title('Reward')
     plt.xlabel('Steps')
@@ -329,8 +327,6 @@ def plot_learning_curve(logger_critic_loss_1, logger_actor_loss, logger_reward, 
     plt.legend()
     plt.show()
     
-=======
->>>>>>> 0a07302a9ba98b9e1b432ad82acb4044da9346b1
 
 all_taux_accord = [] #recupere le taux d'accord pour chaque evaluation de la politique
 steps_evaluation = [] #recupere le taux d'accord pour chaque evaluation de la politique
@@ -435,33 +431,10 @@ def run_sac(sac: SACAlgo):
             logger_reward.append(torch.max(eval_reward[1]).item())
             #print(logger_reward)
     plot_learning_curve(logger_critic_loss, logger_actor_loss, logger_reward, logger_nb_steps, "sac_learning_curve.png")
-<<<<<<< HEAD
     """
 def objective(trial):
     # Sample values of alpha_critic and alpha_actor
     params = {
-=======
-        
-all_taux_accord_n = []
-steps_evaluation_n = []
-import copy
-
-def n_run_sac(sac: SACAlgo, n):
-    #lancement de la fonction run n fois
-    global all_taux_accord, steps_evaluation
-    
-    for i in range (n):
-        all_taux_accord = []
-        steps_evaluation = []
-        run_sac(sac)
-        all_taux_accord_n.append(copy.deepcopy(all_taux_accord))
-        steps_evaluation_n.append(copy.deepcopy(steps_evaluation))
-    
-    
-        
-
-params = {
->>>>>>> 0a07302a9ba98b9e1b432ad82acb4044da9346b1
     "save_best": True,
     "base_dir": "${gym_env.env_name}/sac-S${algorithm.seed}_${current_time:}",
     "algorithm": {
