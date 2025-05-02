@@ -171,7 +171,7 @@ class SACAlgo(EpochBasedAlgo):
 
             rewards = eval_workspace["env/cumulated_reward"][-1]
     
-            return (self.register_evaluation(rewards), rewards)
+            return (self.register_evaluation(rewards), self.best_reward)
 
         
 def setup_entropy_optimizers(cfg):
@@ -471,9 +471,9 @@ def objective(trial):
         "lr": 3e-4,
     },
     }
-    params["critic_optimizer"]["lr"] = trial.suggest_float('alpha_critic', 0.003, 0.01)
-    params["actor_optimizer"]["lr"] = trial.suggest_float('alpha_actor', 0.003, 0.01)
-    params["entropy_coef_optimizer"]["lr"] = trial.suggest_float('entropy_coef_optimizer',  0.003, 0.01)
+    params["critic_optimizer"]["lr"] = trial.suggest_float('alpha_critic', 0.0003, 0.001)
+    params["actor_optimizer"]["lr"] = trial.suggest_float('alpha_actor', 0.0003, 0.001)
+    params["entropy_coef_optimizer"]["lr"] = trial.suggest_float('entropy_coef_optimizer',  0.0003, 0.001)
     params["algorithm"]["architecture"]["actor_hidden_size"] = trial.suggest_categorical('actor_hidden_size', ((15, 15),(20, 20), (25, 25)))
     params["algorithm"]["architecture"]["critic_hidden_size"] = trial.suggest_categorical('critic_hidden_size', ((32, 32), (64, 64), (128, 128)))
     agents = SACAlgo(OmegaConf.create(params))
@@ -483,7 +483,7 @@ def objective(trial):
     # We want to maximize the norm of the final value function
 
     return final_reward
-
+"""
 params = {
     "save_best": True,
     "base_dir": "${gym_env.env_name}/sac-S${algorithm.seed}_${current_time:}",
@@ -550,7 +550,7 @@ with open('data.json', 'w') as f:
 # Visualize the best policy
 #agents.visualize_best()
 
-"""
+
 plt.plot(steps_evaluation, all_taux_accord)
 plt.xlabel("steps")
 plt.ylabel("taux d'accord")
