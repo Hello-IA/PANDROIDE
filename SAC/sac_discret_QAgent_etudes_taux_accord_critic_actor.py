@@ -11,6 +11,8 @@ except ModuleNotFoundError:
 easyimport("swig")
 easyimport("bbrl_utils>=0.5").setup()
 
+
+import optuna
 import copy
 import os
 
@@ -64,6 +66,7 @@ class DiscretePolicy(Agent):
         
     def get_distribution(self, obs):
         scores = self.last_layer(self.model(obs))
+        scores = scores - scores.max(dim=-1, keepdim=True)[0]
         probs = torch.softmax(scores, dim=-1)
         
         return torch.distributions.Categorical(probs), scores, probs
@@ -138,9 +141,7 @@ class SACAlgo(EpochBasedAlgo):
         #print("IN EVALUATE")
         
 
-        if force or (
-            (self.nb_steps - self.last_eval_step) > self.cfg.algorithm.eval_interval
-        ):
+        if force or ((self.nb_steps - self.last_eval_step) > self.cfg.algorithm.eval_interval):
             #print(f"{self.nb_steps=}")
             self.last_eval_step = self.nb_steps
             eval_workspace = Workspace()
@@ -165,13 +166,13 @@ class SACAlgo(EpochBasedAlgo):
             total = accord.shape[0] * accord.shape[1]
             taux_accord = accord.sum().item()/total
             #self.logger.add_log("taux_accord", torch.tensor(taux_accord), self.nb_steps)
-            all_taux_accord.append(taux_accord)
-            steps_evaluation.append(self.nb_steps)
+            #all_taux_accord[nbrun].append(taux_accord)
+            #steps_evaluation[nbrun].append(self.nb_steps)
             #print(f"{taux_accord=}")
 
             rewards = eval_workspace["env/cumulated_reward"][-1]
     
-            return self.register_evaluation(rewards)
+            return (self.register_evaluation(rewards), rewards)
 
         
 def setup_entropy_optimizers(cfg):
@@ -305,23 +306,25 @@ def plot_learning_curve(logger_critic_loss_1, logger_actor_loss, logger_reward, 
     # Create a figure with multiple subplots
     
 
-    steps = logger_nb_steps
-    values = logger_actor_loss
-    plt.plot(steps, values)
+    plt.plot(logger_nb_steps, logger_actor_loss)
     plt.title('Actor Loss')
     plt.xlabel('Steps')
     plt.ylabel('Loss')
     plt.show()
 
     
-
-    steps1 = logger_nb_steps
-    values1 = logger_critic_loss_1
-
-    plt.plot(steps1, values1, label='Critic 1')
+    plt.plot(logger_nb_steps, logger_critic_loss_1, label='Critic 1')
     plt.title('Critic Losses')
     plt.xlabel('Steps')
     plt.ylabel('Loss')
+    plt.legend()
+    plt.show()
+    
+
+    plt.plot(range(len(logger_reward)), logger_reward, label='Reward')
+    plt.title('Reward')
+    plt.xlabel('Steps')
+    plt.ylabel('Mean reward')
     plt.legend()
     plt.show()
     
@@ -334,7 +337,8 @@ def run_sac(sac: SACAlgo):
     cfg = sac.cfg
     logger = sac.logger
 
-    logger_critic_loss, logger_actor_loss, logger_reward, logger_nb_steps = [], [], [], []
+    #logger_critic_loss, logger_actor_loss, logger_reward, logger_nb_steps = [], [], [], []
+    logger_reward = []
     # init_entropy_coef is the initial value of the entropy coef alpha.
     ent_coef = cfg.algorithm.init_entropy_coef
     tau = cfg.algorithm.tau_target
@@ -367,12 +371,12 @@ def run_sac(sac: SACAlgo):
         critic_loss_1, critic_loss_2 = compute_critic_loss(cfg, reward, ~terminated, t_actor, t_q_agents, t_target_q_agents, rb_workspace, ent_coef)
 
         
-        logger_nb_steps.append(sac.nb_steps)
+        #logger_nb_steps.append(sac.nb_steps)
         
         logger.add_log("critic_loss_1", critic_loss_1, sac.nb_steps)
         logger.add_log("critic_loss_2", critic_loss_2, sac.nb_steps)
         critic_loss = critic_loss_1 + critic_loss_2
-        logger_critic_loss.append(critic_loss.detach().numpy())
+        #logger_critic_loss.append(critic_loss.detach().numpy())
         critic_loss.backward()
         torch.nn.utils.clip_grad_norm_(
             sac.critic_1.parameters(), cfg.algorithm.max_grad_norm
@@ -387,7 +391,7 @@ def run_sac(sac: SACAlgo):
         actor_optimizer.zero_grad()
         actor_loss = compute_actor_loss(ent_coef, t_actor, t_q_agents, rb_workspace)
         
-        logger_actor_loss.append(actor_loss.detach().numpy())
+        #logger_actor_loss.append(actor_loss.detach().numpy())
         
         logger.add_log("actor_loss", actor_loss, sac.nb_steps)
 
@@ -412,19 +416,25 @@ def run_sac(sac: SACAlgo):
             entropy_coef_optimizer.step()
             logger.add_log("entropy_coef_loss", entropy_coef_loss, sac.nb_steps)
             logger.add_log("entropy_coef", torch.tensor(ent_coef), sac.nb_steps)
-
+            eval_reward = sac.evaluate()
+            if eval_reward  != None:
+                logger_reward.append(torch.max(eval_reward[1]).item())
+            #print(logger_reward)
+    return logger_reward[-1]
         ####################################################
-
+    """
         # Soft update of target q function
         soft_update_params(sac.critic_1, sac.target_critic_1, tau)
         soft_update_params(sac.critic_2, sac.target_critic_2, tau)
-
-        sac.evaluate()
+        eval_reward = sac.evaluate(nbrun)
+        if eval_reward  != None:
+            logger_reward.append(torch.max(eval_reward[1]).item())
+            #print(logger_reward)
     plot_learning_curve(logger_critic_loss, logger_actor_loss, logger_reward, logger_nb_steps, "sac_learning_curve.png")
-        
-        
-
-params = {
+    """
+def objective(trial):
+    # Sample values of alpha_critic and alpha_actor
+    params = {
     "save_best": True,
     "base_dir": "${gym_env.env_name}/sac-S${algorithm.seed}_${current_time:}",
     "algorithm": {
@@ -437,7 +447,7 @@ params = {
         "nb_evals": 16,
         "eval_interval": 2_000,
         "learning_starts": 10_000,
-        "max_epochs": 2_000,
+        "max_epochs": 100,
         "discount_factor": 0.98,
         "entropy_mode": "auto",  # "auto" or "fixed"
         "init_entropy_coef": 2e-7,
@@ -460,21 +470,90 @@ params = {
         "classname": "torch.optim.Adam",
         "lr": 3e-4,
     },
+    }
+    params["critic_optimizer"]["lr"] = trial.suggest_float('alpha_critic', 0.003, 0.01)
+    params["actor_optimizer"]["lr"] = trial.suggest_float('alpha_actor', 0.003, 0.01)
+    params["entropy_coef_optimizer"]["lr"] = trial.suggest_float('entropy_coef_optimizer',  0.003, 0.01)
+    params["algorithm"]["architecture"]["actor_hidden_size"] = trial.suggest_categorical('actor_hidden_size', ((15, 15),(20, 20), (25, 25)))
+    params["algorithm"]["architecture"]["critic_hidden_size"] = trial.suggest_categorical('critic_hidden_size', ((32, 32), (64, 64), (128, 128)))
+    agents = SACAlgo(OmegaConf.create(params))
+    final_reward = run_sac(agents)
+
+
+    # We want to maximize the norm of the final value function
+
+    return final_reward
+
+params = {
+    "save_best": True,
+    "base_dir": "${gym_env.env_name}/sac-S${algorithm.seed}_${current_time:}",
+    "algorithm": {
+        "seed": 1,
+        "n_envs": 8,
+        "n_steps": 32,
+        "buffer_size": 1e6,
+        "batch_size": 256,
+        "max_grad_norm": 0.5,
+        "nb_evals": 16,
+        "eval_interval": 2_000,
+        "learning_starts": 10_000,
+        "max_epochs": 100,
+        "discount_factor": 0.98,
+        "entropy_mode": "auto",  # "auto" or "fixed"
+        "init_entropy_coef": 2e-7,
+        "tau_target": 0.05,
+        "architecture": {
+            "actor_hidden_size": [15, 15],
+            "critic_hidden_size": [64, 64],
+        },
+    },
+    "gym_env": {"env_name": "CartPole-v1"},
+    "actor_optimizer": {
+        "classname": "torch.optim.Adam",
+        "lr": 0.006899231168956194,
+    },
+    "critic_optimizer": {
+        "classname": "torch.optim.Adam",
+        "lr": 0.007271329043761232,
+    },
+    "entropy_coef_optimizer": {
+        "classname": "torch.optim.Adam",
+        "lr": 3e-4,
+    },
 }
+"""
+study_Bayes = optuna.create_study(direction='maximize')
+study_Bayes.optimize(objective, n_trials=400)
+
+# Data frame contains the params and the corresponding norm of the final value function
+study_Bayes_analyse = study_Bayes.trials_dataframe(attrs=('params', 'value')) 
+
+best_Bayes = study_Bayes.best_params
+print ('The best parameters founded using Bayesian optimization are: ', best_Bayes, '\n\n')
 
 
+"""
 
 agents = SACAlgo(OmegaConf.create(params))
 run_sac(agents)
+    
+import json
 
+data = {
+    'all_taux_accord': all_taux_accord,
+    'steps_evaluation': steps_evaluation
+}
 
+with open('data.json', 'w') as f:
+    json.dump(data, f)
 
 # Visualize the best policy
-agents.visualize_best()
+#agents.visualize_best()
 
-
+"""
 plt.plot(steps_evaluation, all_taux_accord)
 plt.xlabel("steps")
 plt.ylabel("taux d'accord")
 plt.title("Taux d'accord entre l'actor et le critic lors de chaque évaluation")
 plt.show()
+"""
