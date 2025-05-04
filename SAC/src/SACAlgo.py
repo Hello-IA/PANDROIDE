@@ -115,4 +115,4 @@ class SACAlgo(EpochBasedAlgo):
 
             rewards = eval_workspace["env/cumulated_reward"][-1]
     
-            return (self.register_evaluation(rewards), self.best_reward)
+            return (self.register_evaluation(rewards), torch.mean(rewards).item())

@@ -1,5 +1,5 @@
 
-
+import matplotlib.pyplot as plt
 
 def plot_learning_curve(logger_critic_loss_1, logger_actor_loss, logger_reward, logger_nb_steps, save_path=None):
     """

@@ -1,0 +1,1 @@
+{'alpha_critic': 0.0005357408373154168, 'alpha_actor': 0.0009691513490573814, 'entropy_coef_optimizer': 0.0008251819215057438, 'actor_hidden_size': (20, 20), 'critic_hidden_size': (118, 118)}

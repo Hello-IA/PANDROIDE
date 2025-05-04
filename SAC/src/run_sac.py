@@ -36,6 +36,8 @@ from SACAlgo import *
 
 import numpy as np
 
+from plot import *
+
 from compute import *
 def setup_entropy_optimizers(cfg):
     if cfg.algorithm.entropy_mode == "auto":
@@ -60,7 +62,7 @@ def run_sac(sac: SACAlgo):
     cfg = sac.cfg
     logger = sac.logger
 
-    #logger_critic_loss, logger_actor_loss, logger_reward, logger_nb_steps = [], [], [], []
+    logger_critic_loss, logger_actor_loss, logger_reward, logger_nb_steps = [], [], [], []
     logger_reward = []
     # init_entropy_coef is the initial value of the entropy coef alpha.
     ent_coef = cfg.algorithm.init_entropy_coef
@@ -94,12 +96,12 @@ def run_sac(sac: SACAlgo):
         critic_loss_1, critic_loss_2 = compute_critic_loss(cfg, reward, ~terminated, t_actor, t_q_agents, t_target_q_agents, rb_workspace, ent_coef)
 
         
-        #logger_nb_steps.append(sac.nb_steps)
+        logger_nb_steps.append(sac.nb_steps)
         
         logger.add_log("critic_loss_1", critic_loss_1, sac.nb_steps)
         logger.add_log("critic_loss_2", critic_loss_2, sac.nb_steps)
         critic_loss = critic_loss_1 + critic_loss_2
-        #logger_critic_loss.append(critic_loss.detach().numpy())
+        logger_critic_loss.append(critic_loss.detach().numpy())
         critic_loss.backward()
         torch.nn.utils.clip_grad_norm_(
             sac.critic_1.parameters(), cfg.algorithm.max_grad_norm
@@ -114,7 +116,7 @@ def run_sac(sac: SACAlgo):
         actor_optimizer.zero_grad()
         actor_loss = compute_actor_loss(ent_coef, t_actor, t_q_agents, rb_workspace)
         
-        #logger_actor_loss.append(actor_loss.detach().numpy())
+        logger_actor_loss.append(actor_loss.detach().numpy())
         
         logger.add_log("actor_loss", actor_loss, sac.nb_steps)
 
@@ -141,17 +143,10 @@ def run_sac(sac: SACAlgo):
             logger.add_log("entropy_coef", torch.tensor(ent_coef), sac.nb_steps)
             eval_reward = sac.evaluate()
             if eval_reward  != None:
-                logger_reward.append(torch.max(eval_reward[1]).item())
-            #print(logger_reward)
-    return logger_reward[-1]
-        ####################################################
-    """
+                logger_reward.append(eval_reward[1])
         # Soft update of target q function
         soft_update_params(sac.critic_1, sac.target_critic_1, tau)
         soft_update_params(sac.critic_2, sac.target_critic_2, tau)
-        eval_reward = sac.evaluate(nbrun)
-        if eval_reward  != None:
-            logger_reward.append(torch.max(eval_reward[1]).item())
-            #print(logger_reward)
-    plot_learning_curve(logger_critic_loss, logger_actor_loss, logger_reward, logger_nb_steps, "sac_learning_curve.png")
-    """
+    #plot_learning_curve(logger_critic_loss, logger_actor_loss, logger_reward, logger_nb_steps, "sac_learning_curve.png")
+
+    return logger_reward[-1]

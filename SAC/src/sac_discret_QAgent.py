@@ -66,7 +66,7 @@ def objective(trial):
         "nb_evals": 16,
         "eval_interval": 2_000,
         "learning_starts": 10_000,
-        "max_epochs": 100,
+        "max_epochs": 2_000,
         "discount_factor": 0.98,
         "entropy_mode": "auto",  # "auto" or "fixed"
         "init_entropy_coef": 2e-7,
@@ -90,11 +90,11 @@ def objective(trial):
         "lr": 0.000955276020595222,
     },
     }
-    params["critic_optimizer"]["lr"] = trial.suggest_float('alpha_critic', 0.0003, 0.001)
-    params["actor_optimizer"]["lr"] = trial.suggest_float('alpha_actor', 0.0003, 0.001)
-    params["entropy_coef_optimizer"]["lr"] = trial.suggest_float('entropy_coef_optimizer',  0.0003, 0.001)
-    params["algorithm"]["architecture"]["actor_hidden_size"] = trial.suggest_categorical('actor_hidden_size', ((15, 15),(20, 20), (25, 25)))
-    params["algorithm"]["architecture"]["critic_hidden_size"] = trial.suggest_categorical('critic_hidden_size', ((32, 32), (64, 64), (128, 128)))
+    params["critic_optimizer"]["lr"] = trial.suggest_float('alpha_critic', 0.0001, 0.001)
+    params["actor_optimizer"]["lr"] = trial.suggest_float('alpha_actor', 0.0001, 0.001)
+    params["entropy_coef_optimizer"]["lr"] = trial.suggest_float('entropy_coef_optimizer',  0.0001, 0.001)
+    params["algorithm"]["architecture"]["actor_hidden_size"] = trial.suggest_categorical('actor_hidden_size', ((18, 18),(19, 19), (20, 20), (21, 21), (22, 22)))
+    params["algorithm"]["architecture"]["critic_hidden_size"] = trial.suggest_categorical('critic_hidden_size', ((118, 118), (138, 138), (128, 128)))
     agents = SACAlgo(OmegaConf.create(params))
     final_reward = run_sac(agents)
 
@@ -102,7 +102,7 @@ def objective(trial):
     # We want to maximize the norm of the final value function
 
     return final_reward
-
+"""
 params = {
     "save_best": True,
     "base_dir": "${gym_env.env_name}/sac-S${algorithm.seed}_${current_time:}",
@@ -122,18 +122,18 @@ params = {
         "init_entropy_coef": 2e-7,
         "tau_target": 0.05,
         "architecture": {
-            "actor_hidden_size": [15, 15],
-            "critic_hidden_size": [64, 64],
+            "actor_hidden_size": [20, 20],
+            "critic_hidden_size": [128, 128],
         },
     },
     "gym_env": {"env_name": "CartPole-v1"},
     "actor_optimizer": {
         "classname": "torch.optim.Adam",
-        "lr": 0.006899231168956194,
+        "lr": 3e-4,
     },
     "critic_optimizer": {
         "classname": "torch.optim.Adam",
-        "lr": 0.007271329043761232,
+        "lr": 3e-3,
     },
     "entropy_coef_optimizer": {
         "classname": "torch.optim.Adam",
@@ -142,7 +142,7 @@ params = {
 }
 """
 study_Bayes = optuna.create_study(direction='maximize')
-study_Bayes.optimize(objective, n_trials=400)
+study_Bayes.optimize(objective, n_trials=25)
 
 # Data frame contains the params and the corresponding norm of the final value function
 study_Bayes_analyse = study_Bayes.trials_dataframe(attrs=('params', 'value')) 
@@ -150,6 +150,9 @@ study_Bayes_analyse = study_Bayes.trials_dataframe(attrs=('params', 'value'))
 best_Bayes = study_Bayes.best_params
 print ('The best parameters founded using Bayesian optimization are: ', best_Bayes, '\n\n')
 
+with open("../docs/BestParam.txt", 'w', encoding='utf-8') as fichier:
+    # Écrit la phrase dans le fichier
+    fichier.write(str(best_Bayes))
 
 """
 
@@ -176,3 +179,4 @@ plt.ylabel("taux d'accord")
 plt.title("Taux d'accord entre l'actor et le critic lors de chaque évaluation")
 plt.show()
 
+"""
