@@ -6,15 +6,12 @@ def lire_fichier(chemin):
         lignes = fichier.readlines()
         donnees = []
         for ligne in lignes:
-            ligne = ligne.strip().replace('[', '').replace(']', '')  # Supprimer les crochets
+            ligne = ligne.strip().replace('[', '').replace(']', '')
             valeurs = [float(val) for val in ligne.split(',')]
             donnees.append(np.array(valeurs))
         return donnees
 
 def traiter_donnees(donnees):
-    if len(donnees) < 2:
-        print("Pas assez de données pour calculer la moyenne et l'écart-type.")
-        return None, None, None
     
     x = donnees[0]
     y = np.array(donnees[1:])
@@ -36,11 +33,11 @@ def afficher_graphique(x, y_moyenne, y_ecart_type):
                      color="b", alpha=0.2, label="Écart-type")
     plt.xlabel('Steps')
     plt.ylabel('Reward')
-    plt.title('Les reward moyenne sur 10 seed')
+    plt.title('Les reward moyenne sur 10 seed avec une entropie nulle')
     plt.show()
 
 def main():
-    chemin_fichier = '../docs/DSACMeanReward.txt'  # remplacez par le chemin de votre fichier
+    chemin_fichier = '../docs/DSACMeanRewardEnt0.txt'  
     try:
         donnees = lire_fichier(chemin_fichier)
         x, y_moyenne, y_ecart_type = traiter_donnees(donnees)
