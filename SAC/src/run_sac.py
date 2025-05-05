@@ -62,10 +62,11 @@ def run_sac(sac: SACAlgo):
     cfg = sac.cfg
     logger = sac.logger
 
-    logger_critic_loss, logger_actor_loss, logger_reward, logger_nb_steps = [], [], [], []
+    logger_critic_loss, logger_actor_loss, logger_reward, logger_nb_steps, logger_nb_steps_evale = [], [], [], [], []
     logger_reward = []
     # init_entropy_coef is the initial value of the entropy coef alpha.
-    ent_coef = cfg.algorithm.init_entropy_coef
+    #ent_coef = cfg.algorithm.init_entropy_coef
+    ent_coef = 0
     tau = cfg.algorithm.tau_target
 
     # Creates the temporal actors
@@ -126,7 +127,7 @@ def run_sac(sac: SACAlgo):
             sac.train_policy.parameters(), sac.cfg.algorithm.max_grad_norm
         )
         actor_optimizer.step()
-
+        """
         # Entropy optimizer part
         if entropy_coef_optimizer is not None:
             # See Eq. (17) of the SAC and Applications paper. The log
@@ -141,12 +142,14 @@ def run_sac(sac: SACAlgo):
             entropy_coef_optimizer.step()
             logger.add_log("entropy_coef_loss", entropy_coef_loss, sac.nb_steps)
             logger.add_log("entropy_coef", torch.tensor(ent_coef), sac.nb_steps)
-            eval_reward = sac.evaluate()
-            if eval_reward  != None:
-                logger_reward.append(eval_reward[1])
+        """
         # Soft update of target q function
         soft_update_params(sac.critic_1, sac.target_critic_1, tau)
         soft_update_params(sac.critic_2, sac.target_critic_2, tau)
+        eval_reward = sac.evaluate()
+        if eval_reward  != None:
+            logger_reward.append(eval_reward[1])
+            logger_nb_steps_evale.append(eval_reward[2])
     #plot_learning_curve(logger_critic_loss, logger_actor_loss, logger_reward, logger_nb_steps, "sac_learning_curve.png")
 
-    return logger_reward[-1]
+    return logger_reward, logger_nb_steps_evale
