@@ -13,9 +13,9 @@ L’objectif du projet est de :
 ## Structure du projet
 
 - DDPG/, DQN/, SAC/, TD3Discret/
-    -Contiennent des notebooks explicatifs pour chaque algorithme implémenté, permettant de mieux comprendre leur fonctionnement et leur entraînement avec BBRL.
+        - Contiennent des notebooks explicatifs pour chaque algorithme implémenté, permettant de mieux comprendre leur fonctionnement et leur entraînement avec BBRL.
 - DSAC/
-Contient l’implémentation complète et les expériences menées sur Discrete Soft Actor-Critic (DSAC) :
+    - Contient l’implémentation complète et les expériences menées sur Discrete Soft Actor-Critic (DSAC) :
     - src/ : Fichiers source Python de l’implémentation.
     - docs/ : Résultats numériques (logs, récompenses, meilleurs hyperparamètres, etc.).
     - outputs/ : Répertoires générés par BBRL (logs, modèles, etc.).
