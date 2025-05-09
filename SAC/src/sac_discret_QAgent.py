@@ -13,24 +13,12 @@ easyimport("bbrl_utils>=0.5").setup()
 
 
 import optuna
-import copy
 import os
 
 import torch
-import torch.nn as nn
-from bbrl.workspace import Workspace
-from bbrl.agents import Agent, Agents, TemporalAgent, KWAgentWrapper
-from bbrl_utils.algorithms import EpochBasedAlgo
-from bbrl_utils.nn import build_mlp, setup_optimizer, soft_update_params
-from bbrl_utils.notebook import setup_tensorboard
+
 from omegaconf import OmegaConf
-from torch.distributions import (
-    Normal,
-    TransformedDistribution,
-)
-import bbrl_gymnasium  # noqa: F401
-from torch.distributions import Categorical
-import matplotlib.pyplot as plt
+
 
 from SACAlgo import *
         
@@ -43,7 +31,6 @@ from run_sac import *
 import numpy as np
 
 import os
-os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
 
 
     
@@ -57,12 +44,12 @@ params = {
     "base_dir": "${gym_env.env_name}/sac-S${algorithm.seed}_${current_time:}",
     "algorithm": {
         "seed": 1,
-        "n_envs": 8,
+        "n_envs": 1,
         "n_steps": 32,
         "buffer_size": 1e6,
         "batch_size": 256,
         "max_grad_norm": 0.5,
-        "nb_evals": 16,
+        "nb_evals": 10,
         "eval_interval": 2_000,
         "learning_starts": 10_000,
         "max_epochs": 2_000,
@@ -129,7 +116,7 @@ for i in range(10):
     torch.manual_seed(i)
     logger_reward, logger_nb_steps_evale = run_sac(agents)
     set_logger_reward.append(logger_reward)
-with open("../docs/DSACMeanRewardEnt0.txt", 'w', encoding='utf-8') as fichier:
+with open("../docs/DSACMeanReward1env.txt", 'w', encoding='utf-8') as fichier:
     # Écrit la phrase dans le fichier
     fichier.write(str(logger_nb_steps_evale) + "\n")
     for lr in set_logger_reward:

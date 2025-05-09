@@ -1,36 +1,12 @@
-try:
-    from easypip import easyimport
-except ModuleNotFoundError:
-    from subprocess import run
-
-    assert (
-        run(["pip", "install", "easypip"]).returncode == 0
-    ), "Could not install easypip"
-    from easypip import easyimport
-
-easyimport("swig")
-easyimport("bbrl_utils>=0.5").setup()
-
-
-import optuna
-import copy
-import os
 
 import torch
 import torch.nn as nn
-from bbrl.workspace import Workspace
-from bbrl.agents import Agent, Agents, TemporalAgent, KWAgentWrapper
-from bbrl_utils.algorithms import EpochBasedAlgo
-from bbrl_utils.nn import build_mlp, setup_optimizer, soft_update_params
-from bbrl_utils.notebook import setup_tensorboard
-from omegaconf import OmegaConf
-from torch.distributions import (
-    Normal,
-    TransformedDistribution,
-)
-import bbrl_gymnasium  # noqa: F401
-from torch.distributions import Categorical
-import matplotlib.pyplot as plt
+
+from bbrl.agents import  Agents, TemporalAgent
+from bbrl_utils.nn import setup_optimizer, soft_update_params
+
+
+
 
 from SACAlgo import *
 
@@ -65,8 +41,8 @@ def run_sac(sac: SACAlgo):
     logger_critic_loss, logger_actor_loss, logger_reward, logger_nb_steps, logger_nb_steps_evale = [], [], [], [], []
     logger_reward = []
     # init_entropy_coef is the initial value of the entropy coef alpha.
-    #ent_coef = cfg.algorithm.init_entropy_coef
-    ent_coef = 0
+    ent_coef = cfg.algorithm.init_entropy_coef
+    #Sent_coef = 0
     tau = cfg.algorithm.tau_target
 
     # Creates the temporal actors
@@ -127,7 +103,7 @@ def run_sac(sac: SACAlgo):
             sac.train_policy.parameters(), sac.cfg.algorithm.max_grad_norm
         )
         actor_optimizer.step()
-        """
+        
         # Entropy optimizer part
         if entropy_coef_optimizer is not None:
             # See Eq. (17) of the SAC and Applications paper. The log
@@ -142,7 +118,7 @@ def run_sac(sac: SACAlgo):
             entropy_coef_optimizer.step()
             logger.add_log("entropy_coef_loss", entropy_coef_loss, sac.nb_steps)
             logger.add_log("entropy_coef", torch.tensor(ent_coef), sac.nb_steps)
-        """
+        
         # Soft update of target q function
         soft_update_params(sac.critic_1, sac.target_critic_1, tau)
         soft_update_params(sac.critic_2, sac.target_critic_2, tau)

@@ -1,36 +1,14 @@
-try:
-    from easypip import easyimport
-except ModuleNotFoundError:
-    from subprocess import run
 
-    assert (
-        run(["pip", "install", "easypip"]).returncode == 0
-    ), "Could not install easypip"
-    from easypip import easyimport
-
-easyimport("swig")
-easyimport("bbrl_utils>=0.5").setup()
-
-
-import optuna
 import copy
-import os
+
 
 import torch
-import torch.nn as nn
+
 from bbrl.workspace import Workspace
-from bbrl.agents import Agent, Agents, TemporalAgent, KWAgentWrapper
+from bbrl.agents import Agents, KWAgentWrapper
 from bbrl_utils.algorithms import EpochBasedAlgo
-from bbrl_utils.nn import build_mlp, setup_optimizer, soft_update_params
-from bbrl_utils.notebook import setup_tensorboard
-from omegaconf import OmegaConf
-from torch.distributions import (
-    Normal,
-    TransformedDistribution,
-)
-import bbrl_gymnasium  # noqa: F401
-from torch.distributions import Categorical
-import matplotlib.pyplot as plt
+
+
 
 from Agent import *
 
