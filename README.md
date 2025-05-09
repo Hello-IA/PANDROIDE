@@ -8,5 +8,5 @@ L’objectif du projet est de :
 - Prendre en main la bibliothèque `BBRL` (Black-Box Reinforcement Learning),
 - Implémenter plusieurs algorithmes de Deep Reinforcement Learning classiques (DQN, DDQN, DDPG, TD3, SAC),
 - Réaliser une version **discrète** de l'algorithme **Soft Actor-Critic (DSAC)**,
-- Étudier expérimentalement le comportement de l'actor et du critic,
-- Comparer les performances du DSAC à celles de DQN.
+- Étudier expérimentalement le comportement de l'actor et du critic.
+
