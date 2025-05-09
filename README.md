@@ -2,7 +2,7 @@
 
 Ce projet a été réalisé dans le cadre de l'UE Projet ANDROIDE du Master 1 Informatique (parcours AI2D) à Sorbonne Université.
 
-## 📚 Objectif
+## Objectif
 
 L’objectif du projet est de :
 - Prendre en main la bibliothèque `BBRL` (Black-Box Reinforcement Learning),
@@ -10,3 +10,8 @@ L’objectif du projet est de :
 - Réaliser une version **discrète** de l'algorithme **Soft Actor-Critic (DSAC)**,
 - Étudier expérimentalement le comportement de l'actor et du critic.
 
+## Structure du projet
+
+- Les repos DDPG, DQN, SAC, TD3Discret comporte les notebooks explicatif de chaque algorithme
+- DSAC
+  
