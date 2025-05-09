@@ -20,4 +20,19 @@ L’objectif du projet est de :
     - docs/ : Résultats numériques (logs, récompenses, meilleurs hyperparamètres, etc.).
     - outputs/ : Répertoires générés par BBRL (logs, modèles, etc.).
     - plot/ : Graphiques et figures issues des études expérimentales.
+ 
+## Librairies utilisées
+- [BBRL (bbrl_utils)](https://github.com/osigaud/bbrl)
+- Gymnasium
+- Optuna
+- PyTorch
+- Matplotlib
+
+## Encadrants
+
+- Olivier Sigaud (ISIR, Sorbonne Université)
+
+## Auteurs
+- Simon Groc 
+- Yassin Lahbib
   
